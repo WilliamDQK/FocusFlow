@@ -1,0 +1,15 @@
+import dayjs from 'dayjs'
+import { BarChart3, CalendarCheck, CheckCircle2, Clock3, Gauge, Layers3 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { lazy, Suspense } from 'react'
+import { PageHeader } from '../components/shared/PageHeader'
+import { useAppStore } from '../stores/app-store'
+import { formatDuration, formatMinutes } from '../utils/time'
+
+const FocusChart = lazy(() => import('../components/charts/FocusChart').then((module) => ({ default: module.FocusChart })))
+
+export function StatisticsPage() {
+  const { t } = useTranslation(); const data = useAppStore((s) => s.data); const sessions = data.sessions.filter((x) => !x.deleted_at && x.completed); const total = sessions.reduce((a, x) => a + x.duration_seconds, 0); const days = Array.from({ length: 14 }, (_, i) => dayjs().subtract(13 - i, 'day')); const values = days.map((date) => Math.round(sessions.filter((x) => dayjs(x.start_time).isSame(date, 'day')).reduce((a, x) => a + x.duration_seconds, 0) / 60)); const focusDays = new Set(sessions.map((x) => x.start_time.slice(0, 10))).size; const completed = data.tasks.filter((x) => x.completed_at).length; const longest = Math.max(0, ...sessions.map((x) => x.duration_seconds)); const metrics = [[t('stats.total'), formatMinutes(total / 60), Clock3], [t('stats.average'), sessions.length ? formatDuration(total / sessions.length, true) : '0m', Gauge], [t('stats.sessions'), sessions.length, Layers3], [t('stats.completed'), completed, CheckCircle2], [t('stats.focusDays'), focusDays, CalendarCheck], [t('stats.longest'), formatDuration(longest, true), BarChart3]] as const
+  const projectTotals = data.projects.map((project) => ({ ...project, seconds: sessions.filter((x) => x.project_id === project.id).reduce((a, x) => a + x.duration_seconds, 0) })).filter((x) => x.seconds > 0).sort((a, b) => b.seconds - a.seconds)
+  return <div className="page"><PageHeader title={t('stats.title')} subtitle={t('stats.subtitle')} /><div className="metric-grid stats-metrics">{metrics.map(([label, value, Icon]) => <article className="metric-card" key={label}><div className="metric-icon"><Icon size={18} /></div><span>{label}</span><strong>{value}</strong></article>)}</div><div className="stats-grid"><section className="panel panel-wide"><header className="panel-header"><h2>{t('stats.daily')}</h2></header><Suspense fallback={<div className="chart-loading" />}><FocusChart labels={days.map((x) => x.format('MM-DD'))} values={values} type="bar" height={280} /></Suspense></section><section className="panel"><header className="panel-header"><h2>{t('stats.projects')}</h2></header><div className="distribution">{projectTotals.length ? projectTotals.map((project) => <div key={project.id}><div><span><i style={{ background: project.color }} />{project.name}</span><b>{formatMinutes(project.seconds / 60)}</b></div><div className="distribution-bar"><span style={{ width: `${project.seconds / projectTotals[0]!.seconds * 100}%`, background: project.color }} /></div></div>) : <p className="muted">{t('stats.noProjectData')}</p>}</div></section></div></div>
+}

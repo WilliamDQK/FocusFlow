@@ -1,0 +1,28 @@
+import { CheckCircle2, Minus, Pause, Play, Plus, RotateCcw, Square } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { PageHeader } from '../components/shared/PageHeader'
+import { Button } from '../components/ui/Button'
+import { Input, Select, Textarea } from '../components/ui/Field'
+import { useAppStore } from '../stores/app-store'
+import { useTimerStore } from '../stores/timer-store'
+import type { FocusMode } from '../types/domain'
+import { formatDuration } from '../utils/time'
+
+export function FocusPage() {
+  const { t } = useTranslation(); const data = useAppStore((s) => s.data); const timer = useTimerStore((s) => s.timer); const start = useTimerStore((s) => s.start); const pause = useTimerStore((s) => s.pause); const resume = useTimerStore((s) => s.resume); const finish = useTimerStore((s) => s.finish); const [params] = useSearchParams(); const [mode, setMode] = useState<FocusMode>('pomodoro'); const [taskId, setTaskId] = useState(params.get('task') ?? ''); const [focusMinutes, setFocusMinutes] = useState(data.settings.pomodoroMinutes); const [note, setNote] = useState(''); const [now, setNow] = useState(Date.now()); const [message, setMessage] = useState('')
+  useEffect(() => { if (!timer) return; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [timer])
+  const seconds = useTimerStore.getState().elapsed(now); const display = timer?.mode === 'pomodoro' ? Math.max(0, timer.planned_seconds - seconds) : seconds; const overtime = Boolean(timer?.mode === 'pomodoro' && seconds > timer.planned_seconds); const progress = timer?.planned_seconds ? Math.min(100, seconds / timer.planned_seconds * 100) : 0; const task = useMemo(() => data.tasks.find((x) => x.id === timer?.task_id), [data.tasks, timer?.task_id])
+  function stop(interrupted: boolean) { const result = finish(interrupted, note); setMessage(result.saved ? t('focus.saved') : t('focus.discarded')); setNote('') }
+  useEffect(() => {
+    if (!timer || timer.mode !== 'pomodoro' || timer.status !== 'running') return
+    const overtimeSeconds = data.settings.autoOvertime ? data.settings.overtimeMinutes * 60 : 0
+    if (seconds < timer.planned_seconds + overtimeSeconds) return
+    const result = finish(false, note)
+    setMessage(result.saved ? t('focus.autoFinished') : t('focus.discarded'))
+    setNote('')
+  }, [data.settings.autoOvertime, data.settings.overtimeMinutes, finish, note, seconds, t, timer])
+  const changeMinutes = (value: number) => setFocusMinutes(Math.min(240, Math.max(1, value)))
+  return <div className="page focus-page"><PageHeader title={t('focus.title')} subtitle={t('focus.subtitle')} /><div className="focus-card"><div className="mode-tabs"><Button variant={mode === 'pomodoro' ? 'primary' : 'ghost'} onClick={() => setMode('pomodoro')} disabled={Boolean(timer)}>{t('focus.pomodoro')}</Button><Button variant={mode === 'stopwatch' ? 'primary' : 'ghost'} onClick={() => setMode('stopwatch')} disabled={Boolean(timer)}>{t('focus.stopwatch')}</Button></div>{timer ? <><div className="focus-task-label">{task?.title || t('focus.noTimer')}</div><div className={`timer-display ${overtime ? 'is-overtime' : ''}`}>{overtime && <span>+ {t('focus.overtime')}</span>}<strong>{formatDuration(overtime ? seconds - timer.planned_seconds : display)}</strong></div>{timer.mode === 'pomodoro' && <div className="timer-progress"><span style={{ width: `${progress}%` }} /></div>}<div className="timer-actions">{timer.status === 'running' ? <Button size="icon" className="timer-main" variant="primary" aria-label={t('common.pause')} onClick={pause}><Pause size={22} /></Button> : <Button size="icon" className="timer-main" variant="primary" aria-label={t('common.resume')} onClick={resume}><Play size={22} /></Button>}<Button size="icon" aria-label={t('common.finish')} onClick={() => stop(false)}><Square size={18} /></Button><Button size="icon" variant="ghost" aria-label={t('common.abandon')} onClick={() => stop(true)}><RotateCcw size={18} /></Button></div><Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('focus.note')} /></> : <><div className="focus-orbit"><div><span>{mode === 'pomodoro' ? focusMinutes : '∞'}</span><small>{mode === 'pomodoro' ? t('common.minutes') : t('focus.stopwatch')}</small></div></div>{mode === 'pomodoro' && <div className="focus-duration-editor"><span>{t('focus.thisDuration')}</span><div><Button size="icon" variant="ghost" aria-label={t('focus.decreaseDuration')} onClick={() => changeMinutes(focusMinutes - 5)}><Minus size={16} /></Button><Input aria-label={t('focus.thisDuration')} type="number" min="1" max="240" value={focusMinutes} onChange={(e) => changeMinutes(Number(e.target.value) || 1)} /><b>{t('common.minutes')}</b><Button size="icon" variant="ghost" aria-label={t('focus.increaseDuration')} onClick={() => changeMinutes(focusMinutes + 5)}><Plus size={16} /></Button></div><small>{t('focus.defaultDurationHint')}</small></div>}<Select aria-label={t('focus.selectTask')} value={taskId} onChange={(e) => setTaskId(e.target.value)}><option value="">{t('focus.selectTask')}</option>{data.tasks.filter((x) => !x.deleted_at && x.status !== 'done' && x.status !== 'archived').map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}</Select><Button className="focus-start" variant="primary" onClick={() => start(mode, data.tasks.find((x) => x.id === taskId) ?? null, focusMinutes)}><Play size={18} />{t('common.start')}</Button></>}{message && <div className="toast-inline"><CheckCircle2 size={16} />{message}</div>}</div></div>
+}
